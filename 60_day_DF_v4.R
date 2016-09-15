@@ -462,7 +462,7 @@ if(!fresh.data) {
   
   data[candidate.vars] <- lapply(data[candidate.vars], replacer)
   
-  save(data, candidate.vars, file = paste0('data in progress ', current.run, '.saved'))
+  save(data, candidate.vars, filter60, file = paste0('data in progress ', current.run, '.saved'))
 }
 
 # 3A - JOB ROLE FEATURES ------------------------------------------------

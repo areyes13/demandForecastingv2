@@ -373,7 +373,7 @@ candidate.vars <- setdiff(colnames(candidate.count), c('OPNSET_ID', 'OG.Start.fl
 
 data[candidate.vars] <- lapply(data[candidate.vars], replacer)
 
-save(data, candidate.vars, file = paste0('data in progress ', current.run,'.saved'))
+save(data, candidate.vars, filter60, file = paste0('data in progress ', current.run,'.saved'))
 fresh.data <- T
 save(fresh.data, file = 'fresh.data.saved')
 
