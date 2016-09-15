@@ -603,8 +603,6 @@ top.jrss <- full_join(top.tot, top.sub, by = c('JOB_ROL_TYP_DESC', 'SKLST_TYP_DE
 top.jrss <- full_join(top.jrss, jrss.tiers, by = c('JOB_ROL_TYP_DESC', 'SKLST_TYP_DESC'))
 
 #map JRSS features back into POSITION DATA
-#df <- tbl_df(data) %>%
-#  filter(year(Close.floor) >= 2015)
 df <- data
 
 save(df, file = '30 day df pre filter.saved')

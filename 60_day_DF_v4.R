@@ -27,13 +27,9 @@ current.run <- Sys.Date()
 # 2A - LOAD DATA ---------------------------------------------------------------
 load('fresh.data.saved')
 
-
-## clark edit: added a space after 'data in progress' so it reads 'data in progress '
 if(fresh.data) {
   load(paste0('data in progress ', current.run, '.saved'))
-  #CLARK EDIT: defined master as equivelant to data
   master <- data
-  ## CLARK EDIT need to load candidate data
 }
 
 if(!fresh.data) {
@@ -47,7 +43,6 @@ if(!fresh.data) {
                    user=as.character(credentials[1]),
                    password=as.character(credentials[2]))
   rm(credentials)
-  )
   
   #OPEN SEAT TABLE
   rs <- dbSendQuery(conn, "SELECT * FROM BCSPMP.OPNSET_T")
@@ -339,15 +334,6 @@ if(!fresh.data) {
   #Work remotely
   data$WRK_RMT_IND <- with(data, WRK_RMT_IND == 'Y')
   
-  #### THESE ARE MISSING ;__;
-  #candidates in play  = TRUE (don't know where this is)
-  #data$Has.Candidates.in.Play <- data$Has.Candidates.in.Play == 'Y'
-  #revenue impact = TRUE (don't know where this one is)
-  #data$Revenue.Impact <- with(data, Revenue.Impact == 'Y')
-  
-  #also can't find "FULFILL_RISK_ID" in the current data dictionary but it is in OPNSET_T
-  #WILL RUN AS FACTOR FOR NOW
-  
   # 2D - DATE CLEANUP -------------------------------------------------------
   #use black magick and blood sacrifices to deal with projecting / scanning into other years (dec 15 -> jan 16)
   month.vars <-
@@ -477,7 +463,7 @@ if(!fresh.data) {
   
   data[candidate.vars] <- lapply(data[candidate.vars], replacer)
   
-  save(data, file = paste0('data in progress ', current.run, '.saved'))
+  save(data, candidate.vars, file = paste0('data in progress ', current.run, '.saved'))
 }
 
 # 3A - JOB ROLE FEATURES ------------------------------------------------
@@ -706,11 +692,8 @@ top.jrss <- full_join(top.tot, top.sub, by = c('JOB_ROL_TYP_DESC', 'SKLST_TYP_DE
 top.jrss <- full_join(top.jrss, jrss.tiers, by = c('JOB_ROL_TYP_DESC', 'SKLST_TYP_DESC'))
 
 #map JRSS features back into POSITION DATA
-#df <- tbl_df(data) %>%
-#  filter(year(Close.floor) >= 2015)
 df <- data
 
-## CLARK edit added "file = to save statement
 save(df, file = '60 day df pre filter.saved')
 
 # 3E - TEST / TRAIN FILTER ------------------------------------------------
@@ -873,12 +856,11 @@ df[facts] <- lapply(df[facts], function(x) {
 })
 
 #use continuous variables + prob output from factor forest
-## clark edit post count, csa posts and candidate vars were not found in df, so I commented out
-
 num.inputvars <- c('STAT_RESN_DESC', "Lead.time.days", "record.age","r2tot", "r2sub", "tot.12cs", "sub.12cs","prj.tot", 
                    "r3prj", "prj.12cs", "m.tot.dmd", "m.tot.act", "m.sub.act", "tot.heat12", 
                    "tot.heat2", "project.duration", "jr.count", "actual.wk", "sub.actual.wk",
-                   "tot.4wk", "sub.4wk", "tot.4lag", "sub.4lag", "tot.delta", "sub.delta", 'upcoming.open')#, 'post.count', 'csa.posts', candidate.vars)
+                   "tot.4wk", "sub.4wk", "tot.4lag", "sub.4lag", "tot.delta", "sub.delta", 'upcoming.open',
+                   candidate.vars, 'post.count', 'csa.posts')
 
 #recode NA as -100 (so we don't throw out any records just bc of NAs)
 df[setdiff(num.inputvars, 'STAT_RESN_DESC')] <- lapply(df[setdiff(num.inputvars, 'STAT_RESN_DESC')], function(x) {
@@ -888,13 +870,8 @@ df[setdiff(num.inputvars, 'STAT_RESN_DESC')] <- lapply(df[setdiff(num.inputvars,
 })
 
 #split into training / testing & save
-#testing <- filter(df, type == 'TEST')
-#train <- filter(df, type == 'TRAIN')
-
-###Clark Edit, type not found, using differnt sytax
-###
-testing <- df[df$type == 'TEST', ]
-train <- df[df$type == 'TRAIN', ]
+testing <- df[df$type == 'TEST',]
+train <- df[df$type == 'TRAIN',]
 
 save(testing, file = paste0('60 day testing', current.run, '.saved'))
 save(train, file = paste0('60 day train', current.run, '.saved'))
@@ -1025,34 +1002,8 @@ test.id <- data.frame(Position.ID = testing$OPNSET_POS_ID,
 final.pred <- cbind(test.id, num.predictions)
 save(final.pred, file = paste0('60 day prediction output ', current.run, '.saved'))
 
-#make pretty importance chart
-#library(ggplot2)
+#make pretty importance chart at the very end to avoid weird shutdown
 
-#importance.plot <- ggplot(importance.tbl, aes(x = var, y = MeanDecreaseAccuracy, color = type))+
-#  geom_point(size = 4)+
-#  geom_point(size = 4, shape = 1, color = 'black')+
-#  geom_vline(xintercept = 0)+
-#  coord_flip()+
-#  theme_bw()+
-#  theme(panel.grid.major.x = element_blank(),
-#        panel.grid.major.y =   element_line(colour = "grey70", size=.7, linetype = 'dashed'),
-#        strip.text.x = element_text(size=10.5, face="bold"), 
-#        strip.text.y = element_text(size=10.5, face="bold"),
-#        axis.title.x=element_text(face="bold",size=14),
-#        axis.title.y=element_text(face="bold",size=14),
-#        axis.text.x=element_text(size=10),
-#        axis.text.y=element_text(size=10),
-#        plot.title=element_text(face="bold",size=24))
-
-#ggsave(plot= importance.plot,
-#       paste0("60 day Random Forest feature importance", current.run, '.png'),
-#       h=250,
-#       w=200,
-#       unit="mm",
-#       type="cairo-png",
-#       dpi=300)
-
-#importance.plot
 
 
 # CLARK ERRORS ------------------------------------------------------------
@@ -1122,7 +1073,8 @@ model.guess <- final.pred %>%
   select(-JR, -SS)
 
 outcome <- left_join(outcome, model.guess, by = c('JRSS'))
-
+run <- FALSE
+if(run) {
 outcome.plot <- ggplot(outcome, aes(x = count, color = inbound))+
   geom_abline(slope = 1, intercept = 0, linetype = 'dashed', color = 'gray30')+
   geom_errorbar(aes(ymax = high95, ymin = low5), alpha = 1/4, size = 1.5) +
@@ -1153,7 +1105,7 @@ ggsave(plot= outcome.plot,
        dpi=300)
 
 outcome.plot
-
+}
 
 # 60 DAY REGRESSION (UGHGHGHGHGHG) ---------------------------------------
 run <- FALSE
@@ -1245,7 +1197,7 @@ library(XLConnect)
 library(dplyr)
 reporter <- data %>%
   filter(OPNSET_POS_ID %in% unique(testing$OPNSET_POS_ID)) %>%
-  select(OPNSET_ID, OPNSET_POS_ID, Unit, JOB_ROL_TYP_DESC, SKLST_TYP_DESC, CRE_T, WRK_CTY_NM, WRK_CNTRY_CD,
+  select(OPNSET_ID, OPNSET_POS_ID, Unit, CNTRCT_OWNG_ORG_NM, JOB_ROL_TYP_DESC, SKLST_TYP_DESC, CRE_T, WRK_CTY_NM, WRK_CNTRY_CD,
          WTHDRW_CLOS_T, INDSTR_NM, OPPOR_OWNR_NOTES_ID, BND_LOW, BND_HIGH, STRT_DT, END_DT, project.duration, PAY_TRVL_IND, Unit) %>%
   mutate(Open.Dummy = 'OPEN',
          Low.Band = BND_LOW, 
@@ -1260,7 +1212,7 @@ reporter <- left_join(num.predictions, reporter, by = c('pos.id' = "OPNSET_POS_I
 #fix DUMB VARIABLE NAMES
 setnames(reporter, 
          setdiff(colnames(reporter), c('Low.Band', 'High.Band', 'Opp.Industry', 'Business.Unit', 'Pay.Travel.Expenses')),
-         c('Position.ID', 'Prediction', 'Probability', "Seat.ID", 'Unit', 'Job.Role', 
+         c('Position.ID', 'Prediction', 'Probability', "Seat.ID", 'Unit', 'Sub.LOB','Job.Role', 
            'Skillset', 'Create.Date', 'Work.City', 'Work.Country', 'Close.Date', 'Industry', 'Opp.Owner.ID', 
            'Band-low', 'Band-high', 'Start.Date', 'End.Date', 'Engagement.Duration', 'Pay.Travel', 'Status'))
 
@@ -1308,6 +1260,7 @@ getSheets(wb)
 #delete data in the sheet
 writeWorksheet(wb, reporter, sheet = "Data", startRow = 1, startCol = 1,
                header = TRUE)
+hideSheet(wb, sheet = "Data")
 
 #output IBM report
 setwd("~/Demand Forecasting II/Archive")
@@ -1325,6 +1278,7 @@ writeWorksheet(wb,
                  select(-`Opp Owner ID`), 
                sheet = "Data", startRow = 1, startCol = 1,
                header = TRUE)
+hideSheet(wb, sheet = "Data")
 
 setwd("~/Demand Forecasting II/Archive")
 saveWorkbook(wb, file = paste0('60 day - Vendor-US Output Report ', current.run, '.xlsx'))
@@ -1340,6 +1294,7 @@ writeWorksheet(wb,
                  select(-`Opp Owner ID`), 
                sheet = "Data", startRow = 1, startCol = 1,
                header = TRUE)
+hideSheet(wb, sheet = "Data")
 
 setwd("~/Demand Forecasting II/Archive")
 saveWorkbook(wb, file = paste0('60 day - Vendor-CA Output Report ', current.run, '.xlsx'))
@@ -1356,5 +1311,35 @@ save(fresh.data, file = 'fresh.data.saved')
 setwd("~/Demand Forecasting II/Archive")
 save.image("60 day ws.RData")
 
-print('THE END...?')
+# Variable importance plot ------------------------------------------------
+
+library(ggplot2)
+
+importance.plot <- ggplot(importance.tbl, aes(x = var, y = MeanDecreaseAccuracy, color = type))+
+  geom_point(size = 4)+
+  geom_point(size = 4, shape = 1, color = 'black')+
+  geom_vline(xintercept = 0)+
+  coord_flip()+
+  theme_bw()+
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.major.y =   element_line(colour = "grey70", size=.7, linetype = 'dashed'),
+        strip.text.x = element_text(size=10.5, face="bold"), 
+        strip.text.y = element_text(size=10.5, face="bold"),
+        axis.title.x=element_text(face="bold",size=14),
+        axis.title.y=element_text(face="bold",size=14),
+        axis.text.x=element_text(size=10),
+        axis.text.y=element_text(size=10),
+        plot.title=element_text(face="bold",size=24))
+
+ggsave(plot= importance.plot,
+       paste0("60 day Random Forest feature importance", current.run, '.png'),
+       h=250,
+       w=200,
+       unit="mm",
+       type="cairo-png",
+       dpi=300)
+
 #end of main script
+
+
+message('THE END...?')
