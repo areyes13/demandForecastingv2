@@ -1305,10 +1305,11 @@ proc.time() - t
 # run vbscript to refresh pivot table
 shell.exec("C:/Users/SCIP2/Documents/Demand Forecasting II/Templates/Rscript.vbs") 
 
-fresh.data <- F
-save(fresh.data, file = 'fresh.data.saved')
 setwd("~/Demand Forecasting II/Archive")
 save.image("60 day ws.RData")
+fresh.data <- F
+save(fresh.data, file = 'fresh.data.saved')
+
 
 # Variable importance plot ------------------------------------------------
 
