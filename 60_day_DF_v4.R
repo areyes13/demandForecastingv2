@@ -21,18 +21,17 @@ library(cowsay)
 #set random seed for consistent RF results
 set.seed(666)
 
-#set current day for naming
-current.run <- Sys.Date()
-
 # 2A - LOAD DATA ---------------------------------------------------------------
 load('fresh.data.saved')
 
 if(fresh.data) {
+  load('current run.saved')
   load(paste0('data in progress ', current.run, '.saved'))
   master <- data
 }
 
 if(!fresh.data) {
+  current.run <- Sys.Date()
   #query new data: connection details to PMP
   jcc = JDBC("com.ibm.db2.jcc.DB2Driver",
              "C:/Users/SCIP2/Documents/DB2 Driver/db2jcc4.jar")

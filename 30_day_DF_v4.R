@@ -23,6 +23,7 @@ set.seed(666)
 
 #set current day for naming
 current.run <- Sys.Date()
+save(current.run, file = 'current run.saved')
 
 # 2A - LOAD DATA ---------------------------------------------------------------
 load('fresh.data.saved')
