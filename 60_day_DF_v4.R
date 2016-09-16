@@ -1102,6 +1102,8 @@ outcome.plot
 run <- FALSE
 if(run) {
   #summarise OOB training to JRSS
+  #this gets you what the model thought would happen in 60 days (FROM TRAINING DATA)
+  #need to join this with what actually happened (including other positions that were created afterwards)
   train.eval <- num.out %>%
     group_by(JR,
              SS,
@@ -1115,32 +1117,38 @@ if(run) {
       log.act = log(actual + 1),
       log.round = log(roundsum + 1),
       rt.act = sqrt(actual),
-      rt.round = sqrt(roundsum)
-    )
+      rt.round = sqrt(roundsum)) %>%
+  mutate(JRSS = paste0(JR, ' - ', SS))
   train.eval$random <-
     with(train.eval, round(sum(actual) / sum(N) * N, 0))
   train.eval$rt.rand <- with(train.eval, sqrt(random))
   
-  #summarise raw data to get actual closed demand per JRSS/MONTH
+  #THIS GETS YOU THE ACTUAL DEMAND FOR A GIVEN MONTH
   demanded <- tbl_df(data) %>%
-    #exclude dates beyond the time period we're projecting
-    filter(
-      STRT_DT <= (current.run + days(60)),!STRT_DT %within% interval(current.run, current.run + days(30)),
-      (WTHDRW_CLOS_T >= OG.Start.floor | is.na(WTHDRW_CLOS_T)),!(filter60(STRT_DT) &
-                                                                   is.na(WTHDRW_CLOS_T))
-    ) %>%
+    filter(year(OG.Start.floor) >= 2015) %>%
+           #WTHDRW_CLOS_T >= OG.Start.floor) %>%
     group_by(JOB_ROL_TYP_DESC, SKLST_TYP_DESC, OG.Start.floor) %>%
     summarise(Total.N = length(OPNSET_POS_ID),
-              subks = sum(STAT_RESN_DESC, na.rm = T))
+              subks = sum(STAT_RESN_DESC, na.rm = T)) %>%
+    ungroup() %>%
+    mutate(JRSS =  paste0(JOB_ROL_TYP_DESC, ' - ', SKLST_TYP_DESC)) %>%
+    select(JRSS, OG.Start.floor, Total.N, subks)
   
+  #SET UP YOUR TABLE FOR REGRESSIONS
+  lm.tbl <- left_join(train.eval, demanded, by = c('JRSS', "Start.dt" = "OG.Start.floor"))
+  lm.tbl <- lm.tbl %>%
+    ungroup() %>%
+    select(JRSS, Start.dt, roundsum, rt.round, rt.rand, subks) %>%
+    mutate(rt.subks =  sqrt(subks))
   
   #do stupid regressions
-  lm.eval <- with(train.eval, lm(rt.act ~ rt.round))
+  lm.eval <- with(lm.tbl, lm(rt.subks ~ rt.round))
   summary(lm.eval)
   
-  rand.eval <- with(train.eval, lm(rt.act ~ rt.rand))
+  rand.eval <- with(lm.tbl, lm(rt.subks ~ rt.rand))
   summary(rand.eval)
   
+  #DUMP
   sink(paste0('60 day regression diagnostics ', current.run, '.txt'))
   cat(say('THE HORROR, THE HORROR!', by = 'cat', type = 'string'), sep = '\n')
   cat("\n")
@@ -1153,29 +1161,32 @@ if(run) {
   summary(rand.eval)
   sink()
   
-  #collapse RF testing output to JRSS predictions
+  #collapse RF TESTING output to JRSS predictions (LIVE DATA!)
   final.eval <- final.pred %>%
     group_by(JR, SS) %>%
     summarise(
       N = length(Position.ID),
       actual = sum(as.logical(actual)),
-      roundsum = round(sum(prob), 0)
-    )
+      roundsum = round(sum(prob), 0))
   
   #GAZE INTO THE ABYSS
-  minority.report <- function(roundsum, linear.model, err) {
-    roundsum <- sqrt(roundsum)
+  minority.report <- function(expected, linear.model, err = NULL) {
+    if(is.null(err)) {
+      message("setting 'err' to 0")
+      err <- 0
+    }
+    
+    expected <- sqrt(expected)
     intercept <- coefficients(linear.model)[[1]]
     slope <- coefficients(linear.model)[[2]]
-    prediction <- intercept + slope * roundsum + err
+    prediction <- intercept + slope * expected + err
     prediction <- round(prediction ^ 2, 0)
     return(prediction)
   }
   
-  err <-
-    unname(sample(size = length(final.eval$roundsum), residuals(lm.eval)))
-  final.eval$Expected.Demand <-
-    minority.report(final.eval$roundsum, lm.eval, err)
+  #THIS IS PROBABLY WRONG BUT WHO CARES
+  err <- unname(sample(size = length(final.eval$roundsum), residuals(lm.eval)))
+  final.eval$Expected.Demand <- minority.report(final.eval$roundsum, lm.eval, err)
   
   ggplot(final.eval, aes(roundsum, Expected.Demand)) +
     geom_point()
