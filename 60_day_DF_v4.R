@@ -1099,8 +1099,10 @@ outcome.plot
 }
 
 # 60 DAY REGRESSION (UGHGHGHGHGHG) ---------------------------------------
-run <- FALSE
-if(run) {
+regress <- T
+if(regress) {
+  #this is only OVERALL (no country breakout)
+  
   #summarise OOB training to JRSS
   #this gets you what the model thought would happen in 60 days (FROM TRAINING DATA)
   #need to join this with what actually happened (including other positions that were created afterwards)
@@ -1169,27 +1171,29 @@ if(run) {
       actual = sum(as.logical(actual)),
       roundsum = round(sum(prob), 0))
   
-  #GAZE INTO THE ABYSS
-  minority.report <- function(expected, linear.model, err = NULL) {
-    if(is.null(err)) {
-      message("setting 'err' to 0")
-      err <- 0
-    }
-    
-    expected <- sqrt(expected)
-    intercept <- coefficients(linear.model)[[1]]
-    slope <- coefficients(linear.model)[[2]]
-    prediction <- intercept + slope * expected + err
-    prediction <- round(prediction ^ 2, 0)
-    return(prediction)
-  }
+  #expected subk demand in TESTING
+  new <- data.frame(rt.round = sqrt(final.eval$roundsum))
   
-  #THIS IS PROBABLY WRONG BUT WHO CARES
-  err <- unname(sample(size = length(final.eval$roundsum), residuals(lm.eval)))
-  final.eval$Expected.Demand <- minority.report(final.eval$roundsum, lm.eval, err)
+  addl.demand <- as.data.frame(predict(lm.eval, new, interval = 'prediction'))
+  addl.demand <- as.data.frame(apply(addl.demand, 2, function(x) round(x^2, 0)))
   
-  ggplot(final.eval, aes(roundsum, Expected.Demand)) +
-    geom_point()
+  addl.demand <- cbind(as.data.frame(final.eval), addl.demand)
+  
+  addl.demand <- tbl_df(addl.demand) %>%
+    mutate(JRSS = paste0(JR, ' - ', SS),
+           flag = roundsum >= upr,
+           rand1 = runif(length(addl.demand$JR), .1, .25),
+           rand2 =runif(length(addl.demand$JR), 0, 3),
+           future.demand = ifelse(flag, 
+                                  roundsum + round(rand1 * roundsum, 0) + round(rand2,0), 
+                                  upr + round(rand2,0)),
+           Expected.Additional.Demand = future.demand - roundsum) %>%
+    select(-flag, -rand1, -rand2, -actual)
+  
+  save(addl.demand, file = 'stupid 60 day regression tbl.saved')
+  
+  addl.demand <- addl.demand %>%
+    select(JRSS, roundsum, Expected.Additional.Demand)
 }
 
 # EXCEL OUTPUT ------------------------------------------------------------
@@ -1230,10 +1234,17 @@ reporter <- left_join(reporter, bounded, by = 'JRSS') %>%
 setnames(reporter, c('Q1','Q3'), c('Low.Estimate', 'High.Estimate'))
 
 #regression
+if(regress) {
+  reporter <- left_join(reporter, addl.demand, by = 'JRSS')
+  setnames(reporter, 'roundsum', 'Expected.JRSS.Demand')
+} else {
+  message('skipping 60 day regression')
+  #in case stupid regression gets switched off, dump dummy values into fields
+  reporter$Expected.JRSS.Demand <- '--'
+  reporter$Expected.Additional.Demand <- '--'
+}
 
 
-reporter$Expected.Demand <- '--'
-reporter$Expected.Additional.Demand <- '--'
 
 names(reporter) <- gsub(x = names(reporter),
                         pattern = "\\.",
