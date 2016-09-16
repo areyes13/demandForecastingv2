@@ -997,7 +997,7 @@ save(final.pred, file = paste0('60 day prediction output ', current.run, '.saved
 
 
 
-# CLARK ERRORS ------------------------------------------------------------
+# CLARK ERRORS OVERALL ------------------------------------------------------------
 
 binary.code <- function(n, probs) {
   #sample from binomial distribution N times, assuming size of 100, and base probability from random forest output
@@ -1064,6 +1064,80 @@ model.guess <- final.pred %>%
   select(-JR, -SS)
 
 outcome <- left_join(outcome, model.guess, by = c('JRSS'))
+
+# CLARK ERRORS us/canada ------------------------------------------------------------
+library(purrr)
+
+country.df <- final.pred %>%
+  select(prob, country)
+country.df <- split(country.df, country.df$country)
+
+#just do a for loop
+
+
+
+sim.ctry <- lapply(country.df, function(x) sapply(x[,1], function(y) binary.code(100, y)))
+sim.ctry <- lapply(sim.ctry, function(x) as.data.frame(t(sim.ctry)))
+
+
+#apply to every row
+simulator <- sapply(final.pred$prob, function(x) binary.code(100, x))
+simulator <- as.data.frame(t(simulator))
+#join back with id vars
+simulator <- cbind(final.pred[c('Position.ID', 'JR', 'SS')], simulator)
+
+library(dplyr)
+library(tidyr)
+#convert to vertical structure
+simulator <- simulator %>%
+  gather(run, value, -Position.ID, - JR, -SS)
+#summarise by JRSS / simulation run
+simulator <- tbl_df(simulator) %>%
+  group_by(JR, SS, run) %>%
+  summarise(count = sum(value))
+#go back to wide structure
+simulator <- tbl_df(simulator) %>%
+  spread(run, count) %>%
+  mutate(JR = paste(JR, SS, sep = ' - ')) %>%
+  select(-SS)
+setnames(simulator, colnames(simulator), c('JRSS', paste0('sim', 1:100)))
+
+#error bounds
+bounded <- apply(simulator[2:101], 1, function(x) round(quantile(x, c(.25, .75)), 0))
+bounded <- as.data.frame(t(bounded))
+
+bounded <- cbind(simulator$JRSS, bounded)
+
+setnames(bounded, colnames(bounded), c('JRSS', 'Q1', 'Q3'))
+
+limiter <- function(x) {
+  x <- as.integer(x)
+  value <- ifelse(x <= 4, x + round(runif(1, 1, 4),0), x)
+  return(value)
+}
+bounded$Q3 <- apply(bounded, 1, function(x) limiter(x[3]))
+
+#only for eval
+outcome <- tbl_df(testing) %>%
+  group_by(JOB_ROL_TYP_DESC, SKLST_TYP_DESC) %>%
+  summarise(count = sum(as.logical(STAT_RESN_DESC))) %>%
+  mutate(JRSS = paste(JOB_ROL_TYP_DESC, SKLST_TYP_DESC, sep = ' - ')) %>%
+  ungroup() %>%
+  select(JRSS, count, -JOB_ROL_TYP_DESC, -SKLST_TYP_DESC)
+
+outcome <- left_join(outcome, bounded, by = 'JRSS')
+
+outcome$inbound <- with(outcome, count >= Q1 & count <= Q3)
+
+model.guess <- final.pred %>%
+  group_by(JR, SS) %>%
+  summarise(roundsum = round(sum(prob), 0)) %>%
+  mutate(JRSS = paste(JR, SS, sep = ' - ')) %>%
+  ungroup() %>%
+  select(-JR, -SS)
+
+outcome <- left_join(outcome, model.guess, by = c('JRSS'))
+
 run <- FALSE
 if(run) {
 outcome.plot <- ggplot(outcome, aes(x = count, color = inbound))+
