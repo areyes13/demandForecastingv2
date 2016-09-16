@@ -896,8 +896,7 @@ facts.input <- train[setdiff(facts, c('OPNSET_ID', 'OPNSET_POS_ID', 'JOB_ROL_TYP
 facts.input$WRK_CTY_NM <- NULL
 facts.input$OWNG_CNTRY_CD <- NULL
 
-#detach("package:ggplot2", unload=TRUE)
-#detach("package:dplyr", unload=TRUE)
+detach("package:dplyr", unload=TRUE)
 
 #drop time sensitive values - THESE MAY BE BIASING THE TRAINING DATA ON INFO WE DON'T HAVE 1 MONTH IN ADVANCE
 facts.input$PREF_FULFLMNT_CHNL_CD <- NULL
