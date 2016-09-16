@@ -760,7 +760,6 @@ train <- train %>%
 #gotta make sure the master training set is LOCKED before we start running (ie, need same features in old & current)
 train <- rbind(train, train.new)
 
-
 #select last FULL week (don't include the current week)
 latest.week <- week.expanded %>%
   filter(Close.week == floor_date(current.run, 'week') - weeks(1))
@@ -814,10 +813,6 @@ owner <- tbl_df(df) %>%
   arrange(rank) %>%
   select(-count, -rank)
 
-
-
-#we map these variables AFTER STACKING - they change each run FOR EVERYONE
-df <- select(df, -jrss.tot, -jrss.sub, -top.city, -top.owner)
 #map the top 50 tot / sub most common JRSS in past 12 months
 df <- left_join(df, top.jrss, by = c('JOB_ROL_TYP_DESC', 'SKLST_TYP_DESC'))
 
@@ -830,10 +825,8 @@ df <- merge(df, owner, by = 'OPPOR_OWNR_NOTES_ID', all.x = T)
 #replace NAs with 'OTHER'
 df[c('jrss.tot', 'jrss.sub', 'top.city', 'top.owner')] <- lapply(df[c('jrss.tot', 'jrss.sub', 'top.city', 'top.owner')], 
                                                                  function(x) replace(x, is.na(x), 'OTHER'))
-
-
 load('start time.saved')
-proc.time() - start
+start - proc.time()
 save(df, file = paste0('60-day observation tbl ', current.run, '.saved'))
 
 # 4A - PREP DATA FOR RANDOM FORESTS ------------------------------------------------------
