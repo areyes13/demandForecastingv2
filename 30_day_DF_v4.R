@@ -25,12 +25,6 @@ set.seed(666)
 current.run <- Sys.Date()
 save(current.run, file = 'current run.saved')
 
-############# PRINT TEST #######################
-fileConn<-file("C:/Users/SCIP2/Documents/Demand Forecasting II/1.txt")
-writeLines(c("Hello","World"), fileConn)
-close(fileConn)
-############# PRINT TEST #######################
-
 # 2A - LOAD DATA ---------------------------------------------------------------
 load('fresh.data.saved')
 fresh.data <- F
@@ -154,12 +148,6 @@ candidate <- left_join(candidate, CAND_T[c('CAND_ID', 'cand.ctry', 'CAND_SRC_CD'
 
 save(master, file = paste0('master ', current.run,'.saved'))
 
-############# PRINT TEST #######################
-fileConn<-file("C:/Users/SCIP2/Documents/Demand Forecasting II/2a.txt")
-writeLines(c("Hello","World"), fileConn)
-close(fileConn)
-############# PRINT TEST #######################
-
 # 2B - DATA REFRESH ----------------------------------------------------
 #bring up the last date the model was run
 load('last run.saved')
@@ -216,12 +204,6 @@ detach("package:plyr", unload=TRUE)
 save(tbls, file = paste0('30 day new positions raw', current.run, ',saved'))
 master <- tbls
 
-############# PRINT TEST #######################
-fileConn<-file("C:/Users/SCIP2/Documents/Demand Forecasting II/2b.txt")
-writeLines(c("Hello","World"), fileConn)
-close(fileConn)
-############# PRINT TEST #######################
-
 # 2C - DATA PREP ----------------------------------------------------------
 start <- proc.time()
 save(start, file = 'start time.saved')
@@ -265,12 +247,6 @@ data$PAY_TRVL_IND <- with(data, PAY_TRVL_IND == 'Y')
 
 #Work remotely
 data$WRK_RMT_IND <- with(data, WRK_RMT_IND == 'Y')
-
-############# PRINT TEST #######################
-fileConn<-file("C:/Users/SCIP2/Documents/Demand Forecasting II/2c.txt")
-writeLines(c("Hello","World"), fileConn)
-close(fileConn)
-############# PRINT TEST #######################
 
 # 2D - DATE CLEANUP -------------------------------------------------------
 #use black magick and blood sacrifices to deal with projecting / scanning into other years (dec 15 -> jan 16)
@@ -351,12 +327,6 @@ filter60 <- function(start.date) {
   return(flag)
 }
 
-############# PRINT TEST #######################
-fileConn<-file("C:/Users/SCIP2/Documents/Demand Forecasting II/2d.txt")
-writeLines(c("Hello","World"), fileConn)
-close(fileConn)
-############# PRINT TEST #######################
-
 # 2E - CANDIDATE MAPPING --------------------------------------------------
 #set up helper function for NA values from casting
 replacer <- function(x) {
@@ -407,12 +377,6 @@ save(data, candidate.vars, filter60, file = paste0('data in progress ', current.
 fresh.data <- T
 save(fresh.data, file = 'fresh.data.saved')
 
-############# PRINT TEST #######################
-fileConn<-file("C:/Users/SCIP2/Documents/Demand Forecasting II/2e.txt")
-writeLines(c("Hello","World"), fileConn)
-close(fileConn)
-############# PRINT TEST #######################
-
 # 3A - JOB ROLE FEATURES ------------------------------------------------
 #collapse by JR to create new features
 jr.ft <- tbl_df(data) %>%
@@ -430,12 +394,6 @@ month.expanded <- left_join(month.expanded, jr.ft, by = c('JOB_ROL_TYP_DESC', 'O
   arrange(desc(OG.Start.floor)) %>%
   mutate(jr.count = lead(jr.count, 1),
          jr.count = replace(jr.count, is.na(jr.count), 0))
-
-############# PRINT TEST #######################
-fileConn<-file("C:/Users/SCIP2/Documents/Demand Forecasting II/3a.txt")
-writeLines(c("Hello","World"), fileConn)
-close(fileConn)
-############# PRINT TEST #######################
 
 # 3B - JRSS ACTUAL WEEKLY DEMAND TABLE ---------------------------------------------
 #how many positions were ACTUALLY CLOSED/WITHDRAWN each month
@@ -504,12 +462,6 @@ week.expanded <- tbl_df(week.expanded) %>%
   #drop the lagged data
   select(-tot.lag, -sub.lag)
 
-############# PRINT TEST #######################
-fileConn<-file("C:/Users/SCIP2/Documents/Demand Forecasting II/3b.txt")
-writeLines(c("Hello","World"), fileConn)
-close(fileConn)
-############# PRINT TEST #######################
-
 # 3C - JRSS ACTUAL MONTHLY DEMAND TABLE  ----------------------------------------
 #FIRST WE GET OUR MONTHLY JRSS ACTUALS
 #how many positions were ACTUALLY CLOSED/WITHDRAWN each month
@@ -573,12 +525,6 @@ jrss.expanded <- tbl_df(jrss.expanded) %>%
          sub.12cs = cumul.yrsum(sub.lag)) %>%
   #drop the lagged data
   select(-tot.lag, -sub.lag)
-
-############# PRINT TEST #######################
-fileConn<-file("C:/Users/SCIP2/Documents/Demand Forecasting II/3c.txt")
-writeLines(c("Hello","World"), fileConn)
-close(fileConn)
-############# PRINT TEST #######################
 
 # 3D - JRSS PROJECTED MONTHLY DEMAND TABLE --------------------------------
 #use the 'expanded' object we made in previous section
@@ -661,12 +607,6 @@ top.jrss <- full_join(top.jrss, jrss.tiers, by = c('JOB_ROL_TYP_DESC', 'SKLST_TY
 df <- data
 
 save(df, file = '30 day df pre filter.saved')
-
-############# PRINT TEST #######################
-fileConn<-file("C:/Users/SCIP2/Documents/Demand Forecasting II/3d.txt")
-writeLines(c("Hello","World"), fileConn)
-close(fileConn)
-############# PRINT TEST #######################
 
 # 3E - TEST / TRAIN FILTER ------------------------------------------------
 #need to split df by test/train to map in the last available JRSS values to prediction set
@@ -790,12 +730,6 @@ load('start time.saved')
 proc.time() - start
 save(df, file = paste0('30 day observation tbl ', current.run, '.saved'))
 
-############# PRINT TEST #######################
-fileConn<-file("C:/Users/SCIP2/Documents/Demand Forecasting II/3e.txt")
-writeLines(c("Hello","World"), fileConn)
-close(fileConn)
-############# PRINT TEST #######################
-
 # 4A - PREP DATA FOR RANDOM FORESTS ------------------------------------------------------
 df$Month <- with(df, month(STRT_DT, label = T))
 df$Year <- with(df, year(STRT_DT))
@@ -836,12 +770,6 @@ save(testing, file = paste0('30 day testing', current.run, '.saved'))
 
 save(train, file = paste0('30 day train', current.run, '.saved'))
 #save last run date for using next refresh
-
-############# PRINT TEST #######################
-fileConn<-file("C:/Users/SCIP2/Documents/Demand Forecasting II/4a.txt")
-writeLines(c("Hello","World"), fileConn)
-close(fileConn)
-############# PRINT TEST #######################
 
 # 4B - TRAIN FACTOR FOREST ------------------------------------------------
 #grab position IDs and JRSS for mapping back into RF outputs
@@ -893,12 +821,6 @@ fact.out <- data.frame(predicted = fact.forest$predicted,
 
 fact.out <- cbind(id, fact.out)
 
-############# PRINT TEST #######################
-fileConn<-file("C:/Users/SCIP2/Documents/Demand Forecasting II/4b.txt")
-writeLines(c("Hello","World"), fileConn)
-close(fileConn)
-############# PRINT TEST #######################
-
 # 4c - TRAIN CONTINUOUS FOREST --------------------------------------------
 #get the numeric vars
 num.input <- train[num.inputvars]
@@ -946,12 +868,6 @@ importance.tbl$var <- as.factor(rownames(importance.tbl))
 rownames(importance.tbl) <- NULL
 importance.tbl$var <- factor(importance.tbl$var, levels = importance.tbl$var[order(importance.tbl$MeanDecreaseAccuracy)])
 
-############# PRINT TEST #######################
-fileConn<-file("C:/Users/SCIP2/Documents/Demand Forecasting II/4c.txt")
-writeLines(c("Hello","World"), fileConn)
-close(fileConn)
-############# PRINT TEST #######################
-
 # 5A - PREDICT ------------------------------------------------------------
 #select factor variables for PREDICTION SET
 test.facts <- testing[colnames(facts.input)]
@@ -980,12 +896,6 @@ final.pred <- cbind(test.id, num.predictions)
 save(final.pred, file = paste0('30 day prediction output ', current.run, '.saved'))
 
 #plot importance chart at the end
-
-############# PRINT TEST #######################
-fileConn<-file("C:/Users/SCIP2/Documents/Demand Forecasting II/5a.txt")
-writeLines(c("Hello","World"), fileConn)
-close(fileConn)
-############# PRINT TEST #######################
 
 # CLARK ERRORS OVERALL ------------------------------------------------------------
 
@@ -1133,11 +1043,6 @@ if(run.this) {
   
   outcome.plot
 }
-############# PRINT TEST #######################
-fileConn<-file("C:/Users/SCIP2/Documents/Demand Forecasting II/5a clarkerrors2.txt")
-writeLines(c("Hello","World"), fileConn)
-close(fileConn)
-############# PRINT TEST #######################
 
 # EXCEL OUTPUT ------------------------------------------------------------
 library(XLConnect)
@@ -1249,12 +1154,6 @@ proc.time() - t
 setwd("~/Demand Forecasting II/Archive")
 save.image("30 day ws.RData")
 
-############# PRINT TEST #######################
-fileConn<-file("C:/Users/SCIP2/Documents/Demand Forecasting II/excel.txt")
-writeLines(c("Hello","World"), fileConn)
-close(fileConn)
-############# PRINT TEST #######################
-
 #make pretty importance chart
 library(ggplot2)
 
@@ -1284,9 +1183,3 @@ ggsave(plot= importance.plot,
 
 
 message('30 DAY COMPLETED')
-
-############# PRINT TEST #######################
-fileConn<-file("C:/Users/SCIP2/Documents/Demand Forecasting II/end.txt")
-writeLines(c("Hello","World"), fileConn)
-close(fileConn)
-############# PRINT TEST #######################
