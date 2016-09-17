@@ -987,7 +987,7 @@ writeLines(c("Hello","World"), fileConn)
 close(fileConn)
 ############# PRINT TEST #######################
 
-# CLARK ERRORS ------------------------------------------------------------
+# CLARK ERRORS OVERALL ------------------------------------------------------------
 
 binary.code <- function(n, probs) {
   #sample from binomial distribution N times, assuming size of 100, and base probability from random forest output
@@ -1001,68 +1001,79 @@ binary.code <- function(n, probs) {
 simulator <- sapply(final.pred$prob, function(x) binary.code(100, x))
 simulator <- as.data.frame(t(simulator))
 #join back with id vars
-simulator <- cbind(final.pred[c('Position.ID', 'JR', 'SS')], simulator)
+simulator <- cbind(final.pred[c('Position.ID', 'JR', 'SS', 'country')], simulator)
 
 library(dplyr)
 library(tidyr)
 #convert to vertical structure
 simulator <- simulator %>%
-  gather(run, value, -Position.ID, - JR, -SS)
+  gather(run, value, -Position.ID, - JR, -SS, -country)
 #summarise by JRSS / simulation run
 simulator <- tbl_df(simulator) %>%
-  group_by(JR, SS, run) %>%
+  group_by(JR, SS, run, country) %>%
   summarise(count = sum(value))
+
 #go back to wide structure
 simulator <- tbl_df(simulator) %>%
   spread(run, count) %>%
-  mutate(JR = paste(JR, SS, sep = ' - ')) %>%
-  select(-SS)
-setnames(simulator, colnames(simulator), c('JRSS', paste0('sim', 1:100)))
+  mutate(JRSS = paste(JR, SS, sep = ' - ')) %>%
+  select(-JR, -SS)
+setnames(simulator, 
+         setdiff(colnames(simulator), c('JRSS', 'country')), 
+         paste0('sim', 1:100))
+simulator <- simulator[c('JRSS', 'country', paste0('sim', 1:100))]
 
 #error bounds
-bounded <- apply(simulator[2:101], 1, function(x) round(quantile(x, c(.25, .75)), 0))
+bounded <- apply(simulator[3:102], 1, function(x) round(quantile(x, c(.25, .75)), 0))
 bounded <- as.data.frame(t(bounded))
 
-bounded <- cbind(simulator$JRSS, bounded)
+bounded <- cbind(simulator[c('JRSS', 'country')], bounded)
 
-setnames(bounded, colnames(bounded), c('JRSS', 'Q1', 'Q3'))
+setnames(bounded, setdiff(colnames(bounded), c('JRSS', 'country')), c('Q1', 'Q3'))
 
+total.summary <- bounded %>%
+  group_by(JRSS) %>%
+  summarise(Q1 = sum(Q1),
+            Q3 = sum(Q3)) %>%
+  mutate(country = 'Overall')
+
+#function to expand some of the bounds
 limiter <- function(x) {
   x <- as.integer(x)
   value <- ifelse(x <= 4, x + round(runif(1, 1, 4),0), x)
   return(value)
 }
-bounded$Q3 <- apply(bounded, 1, function(x) limiter(x[3]))
+#only gets applied to the OVERALL estimates
+#it would be a nightmare to do this for the countries separately and then have them align to the overall nums
+#so just explain that country level estimates are more unstable and numbers may not align perfectly
+#ugh
+total.summary$Q3 <- apply(total.summary, 1, function(x) limiter(x[3]))
 
-#only for eval
-outcome <- tbl_df(testing) %>%
-  group_by(JOB_ROL_TYP_DESC, SKLST_TYP_DESC) %>%
-  summarise(count = sum(as.logical(STAT_RESN_DESC))) %>%
-  mutate(JRSS = paste(JOB_ROL_TYP_DESC, SKLST_TYP_DESC, sep = ' - ')) %>%
-  ungroup() %>%
-  select(JRSS, count, -JOB_ROL_TYP_DESC, -SKLST_TYP_DESC)
-
-outcome <- left_join(outcome, bounded, by = 'JRSS')
-
-outcome$inbound <- with(outcome, count >= Q1 & count <= Q3)
-
-model.guess <- final.pred %>%
-  group_by(JR, SS) %>%
-  summarise(roundsum = round(sum(prob), 0)) %>%
-  mutate(JRSS = paste(JR, SS, sep = ' - ')) %>%
-  ungroup() %>%
-  select(-JR, -SS)
-
-outcome <- left_join(outcome, model.guess, by = c('JRSS'))
-
-############# PRINT TEST #######################
-fileConn<-file("C:/Users/SCIP2/Documents/Demand Forecasting II/5a clarkerrors1.txt")
-writeLines(c("Hello","World"), fileConn)
-close(fileConn)
-############# PRINT TEST #######################
+bounded <- rbind(bounded, total.summary)
 
 run.this <- F
 if(run.this) {
+  #only for eval
+  outcome <- tbl_df(testing) %>%
+    group_by(JOB_ROL_TYP_DESC, SKLST_TYP_DESC) %>%
+    summarise(count = sum(as.logical(STAT_RESN_DESC))) %>%
+    mutate(JRSS = paste(JOB_ROL_TYP_DESC, SKLST_TYP_DESC, sep = ' - ')) %>%
+    ungroup() %>%
+    select(JRSS, count, -JOB_ROL_TYP_DESC, -SKLST_TYP_DESC)
+  
+  outcome <- left_join(outcome, bounded, by = 'JRSS')
+  
+  outcome$inbound <- with(outcome, count >= Q1 & count <= Q3)
+  
+  model.guess <- final.pred %>%
+    group_by(JR, SS) %>%
+    summarise(roundsum = round(sum(prob), 0)) %>%
+    mutate(JRSS = paste(JR, SS, sep = ' - ')) %>%
+    ungroup() %>%
+    select(-JR, -SS)
+  
+  outcome <- left_join(outcome, model.guess, by = c('JRSS'))
+
   outcome.plot <- ggplot(outcome, aes(x = count, color = inbound)) +
     geom_abline(
       slope = 1,
@@ -1160,9 +1171,16 @@ reporter$Subk.prob.flag <- with(reporter, ifelse(Probability >= .6, 'High Subk L
                                                         'Low Subk Likelihood')))
 reporter <- reporter %>%
   mutate(JRSS = paste0(Job.Role, ' - ', Skillset))
-reporter <- left_join(reporter, bounded, by = 'JRSS') %>%
+reporter <- left_join(reporter, 
+                      bounded %>% filter(country == 'Overall'), 
+                      by = 'JRSS') %>%
   select(-Job.Role, -Skillset)
 setnames(reporter, c('Q1','Q3'), c('Low.Estimate', 'High.Estimate'))
+
+reporter <- left_join(reporter, 
+                      bounded %>% filter(country != 'Overall'),
+                      by = c('JRSS', 'Work.Country' = 'country'))
+setnames(reporter, c('Q1','Q3'), c('Low.Estimate.(Country)', 'High.Estimate.(Country)'))
 
 names(reporter) <- gsub(x = names(reporter),
                         pattern = "\\.",
@@ -1187,9 +1205,11 @@ t <- proc.time()
 
 wb <- loadWorkbook("30 Day Subk Demand Forecast Report BLANK TEMPLATE.xlsx")
 getSheets(wb)
-#this sheet name is DUMB. Need to update for final version
-#delete data in the sheet
-writeWorksheet(wb, reporter, sheet = "Data", startRow = 1, startCol = 1,
+#drop country estimates
+writeWorksheet(wb, 
+               reporter %>%
+                 select(-`Low Estimate (Country)`, -`High Estimate (Country)`), 
+               sheet = "Data", startRow = 1, startCol = 1,
                header = TRUE)
 
 hideSheet(wb, sheet = "Data")
@@ -1203,7 +1223,7 @@ saveWorkbook(wb, file = paste0('30 day - IBM Output Report.xlsx'))
 #output US VENDOR report
 setwd("~/Demand Forecasting II/Templates")
 wb <- loadWorkbook("30 Day Vendor Subk Demand Forecast Report BLANK TEMPLATE.xlsx")
-writeWorksheet(wb, reporter %>% filter(`Work Country` == 'US') %>% select(-`Opp Owner ID`), sheet = "Data", startRow = 1, startCol = 1,
+writeWorksheet(wb, reporter %>% filter(`Work Country` == 'US') %>% select(-`Opp Owner ID`, -`Low Estimate`, -`High Estimate`), sheet = "Data", startRow = 1, startCol = 1,
                header = TRUE)
 hideSheet(wb, sheet = "Data")
 
@@ -1215,7 +1235,7 @@ saveWorkbook(wb, file = paste0('30 day - Vendor-US Output Report.xlsx'))
 #output CA VENDOR report
 setwd("~/Demand Forecasting II/Templates")
 wb <- loadWorkbook("30 Day Vendor Subk Demand Forecast Report BLANK TEMPLATE.xlsx")
-writeWorksheet(wb, reporter %>% filter(`Work Country` == 'CA') %>% select(-`Opp Owner ID`), sheet = "Data", startRow = 1, startCol = 1,
+writeWorksheet(wb, reporter %>% filter(`Work Country` == 'CA') %>% select(-`Opp Owner ID`, -`Low Estimate`, -`High Estimate`), sheet = "Data", startRow = 1, startCol = 1,
                header = TRUE)
 hideSheet(wb, sheet = "Data")
 

@@ -1011,165 +1011,78 @@ binary.code <- function(n, probs) {
 simulator <- sapply(final.pred$prob, function(x) binary.code(100, x))
 simulator <- as.data.frame(t(simulator))
 #join back with id vars
-simulator <- cbind(final.pred[c('Position.ID', 'JR', 'SS')], simulator)
+simulator <- cbind(final.pred[c('Position.ID', 'JR', 'SS', 'country')], simulator)
 
 library(dplyr)
 library(tidyr)
 #convert to vertical structure
 simulator <- simulator %>%
-  gather(run, value, -Position.ID, - JR, -SS)
+  gather(run, value, -Position.ID, - JR, -SS, -country)
 #summarise by JRSS / simulation run
 simulator <- tbl_df(simulator) %>%
-  group_by(JR, SS, run) %>%
+  group_by(JR, SS, run, country) %>%
   summarise(count = sum(value))
+
 #go back to wide structure
 simulator <- tbl_df(simulator) %>%
   spread(run, count) %>%
-  mutate(JR = paste(JR, SS, sep = ' - ')) %>%
-  select(-SS)
-setnames(simulator, colnames(simulator), c('JRSS', paste0('sim', 1:100)))
+  mutate(JRSS = paste(JR, SS, sep = ' - ')) %>%
+  select(-JR, -SS)
+setnames(simulator, 
+         setdiff(colnames(simulator), c('JRSS', 'country')), 
+         paste0('sim', 1:100))
+simulator <- simulator[c('JRSS', 'country', paste0('sim', 1:100))]
 
 #error bounds
-bounded <- apply(simulator[2:101], 1, function(x) round(quantile(x, c(.25, .75)), 0))
+bounded <- apply(simulator[3:102], 1, function(x) round(quantile(x, c(.25, .75)), 0))
 bounded <- as.data.frame(t(bounded))
 
-bounded <- cbind(simulator$JRSS, bounded)
+bounded <- cbind(simulator[c('JRSS', 'country')], bounded)
 
-setnames(bounded, colnames(bounded), c('JRSS', 'Q1', 'Q3'))
+setnames(bounded, setdiff(colnames(bounded), c('JRSS', 'country')), c('Q1', 'Q3'))
 
+total.summary <- bounded %>%
+  group_by(JRSS) %>%
+  summarise(Q1 = sum(Q1),
+            Q3 = sum(Q3)) %>%
+  mutate(country = 'Overall')
+
+#function to expand some of the bounds
 limiter <- function(x) {
   x <- as.integer(x)
   value <- ifelse(x <= 4, x + round(runif(1, 1, 4),0), x)
   return(value)
 }
-bounded$Q3 <- apply(bounded, 1, function(x) limiter(x[3]))
+#only gets applied to the OVERALL estimates
+#it would be a nightmare to do this for the countries separately and then have them align to the overall nums
+#so just explain that country level estimates are more unstable and numbers may not align perfectly
+#ugh
+total.summary$Q3 <- apply(total.summary, 1, function(x) limiter(x[3]))
 
-#only for eval
-outcome <- tbl_df(testing) %>%
-  group_by(JOB_ROL_TYP_DESC, SKLST_TYP_DESC) %>%
-  summarise(count = sum(as.logical(STAT_RESN_DESC))) %>%
-  mutate(JRSS = paste(JOB_ROL_TYP_DESC, SKLST_TYP_DESC, sep = ' - ')) %>%
-  ungroup() %>%
-  select(JRSS, count, -JOB_ROL_TYP_DESC, -SKLST_TYP_DESC)
+bounded <- rbind(bounded, total.summary)
 
-outcome <- left_join(outcome, bounded, by = 'JRSS')
-
-outcome$inbound <- with(outcome, count >= Q1 & count <= Q3)
-
-model.guess <- final.pred %>%
-  group_by(JR, SS) %>%
-  summarise(roundsum = round(sum(prob), 0)) %>%
-  mutate(JRSS = paste(JR, SS, sep = ' - ')) %>%
-  ungroup() %>%
-  select(-JR, -SS)
-
-outcome <- left_join(outcome, model.guess, by = c('JRSS'))
-
-# CLARK ERRORS us/canada ------------------------------------------------------------
-library(purrr)
-
-country.df <- final.pred %>%
-  select(prob, country)
-country.df <- split(country.df, country.df$country)
-
-#just do a for loop
-
-
-
-sim.ctry <- lapply(country.df, function(x) sapply(x[,1], function(y) binary.code(100, y)))
-sim.ctry <- lapply(sim.ctry, function(x) as.data.frame(t(sim.ctry)))
-
-
-#apply to every row
-simulator <- sapply(final.pred$prob, function(x) binary.code(100, x))
-simulator <- as.data.frame(t(simulator))
-#join back with id vars
-simulator <- cbind(final.pred[c('Position.ID', 'JR', 'SS')], simulator)
-
-library(dplyr)
-library(tidyr)
-#convert to vertical structure
-simulator <- simulator %>%
-  gather(run, value, -Position.ID, - JR, -SS)
-#summarise by JRSS / simulation run
-simulator <- tbl_df(simulator) %>%
-  group_by(JR, SS, run) %>%
-  summarise(count = sum(value))
-#go back to wide structure
-simulator <- tbl_df(simulator) %>%
-  spread(run, count) %>%
-  mutate(JR = paste(JR, SS, sep = ' - ')) %>%
-  select(-SS)
-setnames(simulator, colnames(simulator), c('JRSS', paste0('sim', 1:100)))
-
-#error bounds
-bounded <- apply(simulator[2:101], 1, function(x) round(quantile(x, c(.25, .75)), 0))
-bounded <- as.data.frame(t(bounded))
-
-bounded <- cbind(simulator$JRSS, bounded)
-
-setnames(bounded, colnames(bounded), c('JRSS', 'Q1', 'Q3'))
-
-limiter <- function(x) {
-  x <- as.integer(x)
-  value <- ifelse(x <= 4, x + round(runif(1, 1, 4),0), x)
-  return(value)
-}
-bounded$Q3 <- apply(bounded, 1, function(x) limiter(x[3]))
-
-#only for eval
-outcome <- tbl_df(testing) %>%
-  group_by(JOB_ROL_TYP_DESC, SKLST_TYP_DESC) %>%
-  summarise(count = sum(as.logical(STAT_RESN_DESC))) %>%
-  mutate(JRSS = paste(JOB_ROL_TYP_DESC, SKLST_TYP_DESC, sep = ' - ')) %>%
-  ungroup() %>%
-  select(JRSS, count, -JOB_ROL_TYP_DESC, -SKLST_TYP_DESC)
-
-outcome <- left_join(outcome, bounded, by = 'JRSS')
-
-outcome$inbound <- with(outcome, count >= Q1 & count <= Q3)
-
-model.guess <- final.pred %>%
-  group_by(JR, SS) %>%
-  summarise(roundsum = round(sum(prob), 0)) %>%
-  mutate(JRSS = paste(JR, SS, sep = ' - ')) %>%
-  ungroup() %>%
-  select(-JR, -SS)
-
-outcome <- left_join(outcome, model.guess, by = c('JRSS'))
-
-run <- FALSE
-if(run) {
-outcome.plot <- ggplot(outcome, aes(x = count, color = inbound))+
-  geom_abline(slope = 1, intercept = 0, linetype = 'dashed', color = 'gray30')+
-  geom_errorbar(aes(ymax = high95, ymin = low5), alpha = 1/4, size = 1.5) +
-  geom_point(aes(y = roundsum), shape = 1, alpha = 1/3, size = 4, stroke = 2,  fill = 'white')+
-  scale_x_continuous(limits = c(0,18), breaks = seq(0,20, by = 2), name = 'Actual Subk Demand', expand = c(0,0)) +
-  scale_y_continuous(limits = c(0,18), breaks = seq(0,20, by = 2), name = 'Predicted Subk Range', expand = c(0,0))+
-  scale_color_discrete(name="Within Predicted Range")+
-  coord_flip() +
-  theme_bw() +
-  guides(colour = guide_legend(override.aes = list(alpha = 1)))+
-  theme(panel.grid.major.x = element_blank(),
-        panel.grid.major.y = element_blank(),
-        strip.text.x = element_text(size=10.5, face="bold"), 
-        strip.text.y = element_text(size=10.5, face="bold"),
-        axis.title.x=element_text(face="bold",size=14),
-        axis.title.y=element_text(face="bold",size=14),
-        axis.text.x=element_text(size=10),
-        axis.text.y=element_text(size=10),
-        plot.title=element_text(face="bold",size=24),
-        legend.position = "bottom")
-
-ggsave(plot= outcome.plot,
-       paste0("Eval - JRSS prediction bounds July", current.run, '.png'),
-       h=200,
-       w=200,
-       unit="mm",
-       type="cairo-png",
-       dpi=300)
-
-outcome.plot
+run.this <- F
+if(run.this) {
+  #only for eval
+  outcome <- tbl_df(testing) %>%
+    group_by(JOB_ROL_TYP_DESC, SKLST_TYP_DESC) %>%
+    summarise(count = sum(as.logical(STAT_RESN_DESC))) %>%
+    mutate(JRSS = paste(JOB_ROL_TYP_DESC, SKLST_TYP_DESC, sep = ' - ')) %>%
+    ungroup() %>%
+    select(JRSS, count, -JOB_ROL_TYP_DESC, -SKLST_TYP_DESC)
+  
+  outcome <- left_join(outcome, bounded, by = 'JRSS')
+  
+  outcome$inbound <- with(outcome, count >= Q1 & count <= Q3)
+  
+  model.guess <- final.pred %>%
+    group_by(JR, SS) %>%
+    summarise(roundsum = round(sum(prob), 0)) %>%
+    mutate(JRSS = paste(JR, SS, sep = ' - ')) %>%
+    ungroup() %>%
+    select(-JR, -SS)
+  
+  outcome <- left_join(outcome, model.guess, by = c('JRSS'))
 }
 
 # 60 DAY REGRESSION (UGHGHGHGHGHG) ---------------------------------------
@@ -1303,9 +1216,16 @@ reporter$Subk.prob.flag <- with(reporter, ifelse(Probability >= .6, 'High Subk L
                                                         'Low Subk Likelihood')))
 reporter <- reporter %>%
   mutate(JRSS = paste0(Job.Role, ' - ', Skillset))
-reporter <- left_join(reporter, bounded, by = 'JRSS') %>%
+reporter <- left_join(reporter, 
+                      bounded %>% filter(country == 'Overall'), 
+                      by = 'JRSS') %>%
   select(-Job.Role, -Skillset)
 setnames(reporter, c('Q1','Q3'), c('Low.Estimate', 'High.Estimate'))
+
+reporter <- left_join(reporter, 
+                      bounded %>% filter(country != 'Overall'),
+                      by = c('JRSS', 'Work.Country' = 'country'))
+setnames(reporter, c('Q1','Q3'), c('Low.Estimate.(Country)', 'High.Estimate.(Country)'))
 
 #regression
 if(regress) {
@@ -1317,8 +1237,6 @@ if(regress) {
   reporter$Expected.JRSS.Demand <- '--'
   reporter$Expected.Additional.Demand <- '--'
 }
-
-
 
 names(reporter) <- gsub(x = names(reporter),
                         pattern = "\\.",
@@ -1343,9 +1261,11 @@ t <- proc.time()
 
 wb <- loadWorkbook("60 Day Subk Demand Forecast Report BLANK TEMPLATE.xlsx")
 getSheets(wb)
-#this sheet name is DUMB. Need to update for final version
-#delete data in the sheet
-writeWorksheet(wb, reporter, sheet = "Data", startRow = 1, startCol = 1,
+#drop country estimates
+writeWorksheet(wb, 
+               reporter %>%
+                 select(-`Low Estimate (Country)`, -`High Estimate (Country)`), 
+               sheet = "Data", startRow = 1, startCol = 1,
                header = TRUE)
 hideSheet(wb, sheet = "Data")
 
@@ -1359,10 +1279,11 @@ saveWorkbook(wb, file = '60 day - IBM Output Report.xlsx')
 setwd("~/Demand Forecasting II/Templates")
 wb <- loadWorkbook("60 Day Vendor Subk Demand Forecast Report BLANK TEMPLATE.xlsx")
 getSheets(wb)
+
 writeWorksheet(wb, 
                reporter %>% 
                  filter(`Work Country` == 'US') %>% 
-                 select(-`Opp Owner ID`), 
+                 select(-`Opp Owner ID`, -`Low Estimate`, -`High Estimate`), 
                sheet = "Data", startRow = 1, startCol = 1,
                header = TRUE)
 hideSheet(wb, sheet = "Data")
@@ -1378,7 +1299,7 @@ wb <- loadWorkbook("60 Day Vendor Subk Demand Forecast Report BLANK TEMPLATE.xls
 writeWorksheet(wb, 
                reporter %>% 
                  filter(`Work Country` == 'CA') %>% 
-                 select(-`Opp Owner ID`), 
+                 select(-`Opp Owner ID`, -`Low Estimate`, -`High Estimate`), 
                sheet = "Data", startRow = 1, startCol = 1,
                header = TRUE)
 hideSheet(wb, sheet = "Data")
