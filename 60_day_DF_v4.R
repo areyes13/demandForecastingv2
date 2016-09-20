@@ -1,4 +1,12 @@
 # 1A - LOAD PACKAGES -----------------------------------------------------------
+
+con <- file("60_day_DF.log")
+sink(con, append=TRUE)
+sink(con, append=TRUE, type="message")
+
+# This will echo all input and not truncate 150+ character lines...
+#source("C:/Users/SCIP2/Documents/Demand Forecasting II/Scripts60_day_DF_v4cl.R", echo=TRUE, max.deparse.length=10000)
+
 #set Java heap size to max
 options(java.parameters = "-Xmx8g")
 Sys.setenv(JAVA_HOME='C:\\Program Files\\Java\\jdk1.8.0_102')
@@ -24,14 +32,15 @@ set.seed(666)
 # 2A - LOAD DATA ---------------------------------------------------------------
 load('fresh.data.saved')
 
+
 if(fresh.data) {
   load('current run.saved')
-  load(paste0('data in progress ', current.run, '.saved'))
+  load(paste0('data in progress ', lubridate::ymd(current.run), '.saved'))
   master <- data
 }
 
 if(!fresh.data) {
-  current.run <- Sys.Date()
+  lubridate::ymd(current.run) <- Sys.Date()
   #query new data: connection details to PMP
   jcc = JDBC("com.ibm.db2.jcc.DB2Driver",
              "C:/Users/SCIP2/Documents/DB2 Driver/db2jcc4.jar")
@@ -55,7 +64,7 @@ if(!fresh.data) {
   rs <- dbSendQuery(conn, "SELECT * FROM BCSPMP.OPNSET_POS_T")
   OPNSET_POS_T <- fetch(rs,-1)
   
-  save(OPNSET_POS_T, file = paste0('OPNSET_POS_T_', current.run, '.saved'))
+  save(OPNSET_POS_T, file = paste0('OPNSET_POS_T_', lubridate::ymd(current.run), '.saved'))
   
   #OPEN DETAIL TABLE
   rs <- dbSendQuery(conn, "SELECT * FROM BCSPMP.OPNSET_DTL_T")
@@ -165,21 +174,27 @@ if(!fresh.data) {
   candidate <-
     left_join(candidate, CAND_T[c('CAND_ID', 'cand.ctry', 'CAND_SRC_CD')], by = 'CAND_ID')
   
-  save(master, file = paste0('master ', current.run, '.saved'))
+  save(master, file = paste0('master ', lubridate::ymd(current.run), '.saved'))
   
   
   # 2B - DATA REFRESH ----------------------------------------------------
   #bring up the last date the model was run
   load('60 day last run.saved')
   
-  paste0('Last model run: ', current.run - last.run, ' day(s) ago')
+  #CLARK EDIT need to load the training data
+  load(paste0('60 day train', lubridate::ymd(last.run), '.saved'))
+  
+  train.new <- train
+  
+  #paste0('Last model run: ', lubridate::ymd(current.run) - last.run, ' day(s) ago')
   #load last test set
-  load(paste0('60 day testing', last.run, '.saved'))
+  
+  #train.new <- train
+  
+  load(paste0('60 day testing', lubridate::ymd(last.run), '.saved'))
   #get position ids from last test set
   
   last.pos <- unique(testing$OPNSET_POS_ID)
-  
-
   
   #grab fields to update in testing data from last query
   actualizer <- tbl_df(master) %>%
@@ -208,10 +223,17 @@ if(!fresh.data) {
   #B) positions is STILL OPEN since last run: we want to stack FROZEN VIEW with OLD TRAINING and feed last query data to NEW TESTING
   
   #LOAD LAST TRAINING:
-  load(paste0('60 day train', last.run, '.saved'))
+  #clark edit
+  # load(paste0('60 day train', last.run, '.saved'))
+  train.new <- train
+  
+  load(paste0('60 day train', lubridate::ymd(last.run), '.saved'))
   #stack last run's testing set
   train <- rbind(train, actualizer)
-  save(train, file = paste0('60 day train', current.run, '.saved'))
+  
+  train.new <- train
+  
+  save(train, file = paste0('60 day train', lubridate::ymd(current.run), '.saved'))
   
   #select POSITIONS STILL OPEN FROM LAST UPDATE
   open.test <- filter(actualizer, is.na(WTHDRW_CLOS_T)) %>%
@@ -232,7 +254,8 @@ if(!fresh.data) {
   
   #this is the new data that needs to flow thru the next sections to generate features
   #we will need to split into testing/training AFTER all features are built and then stack where needed
-  save(tbls, file = paste0('60 day new positions raw', current.run, ',saved'))
+  train.new <- train
+  save(tbls, file = paste0('60 day new positions raw', lubridate::ymd(current.run), ',saved'))
   master <- tbls
   
   # 2C - DATA PREP ----------------------------------------------------------
@@ -356,7 +379,7 @@ if(!fresh.data) {
   
   #this is AGE OF RECORD (how long has it been sitting in the system?)
   to.today <- function(date) {
-    today <- current.run
+    today <- lubridate::ymd(current.run)
     days <- as.integer(round(difftime(today, date, units = 'days'),
                              digits = 0))
     return(days)
@@ -377,7 +400,7 @@ if(!fresh.data) {
   
   #needed w/in 30 days
   from.today <- function(date) {
-    today <- current.run
+    today <- lubridate::ymd(current.run)
     days <- as.integer(round(difftime(date, today, units = 'days'),
                              digits = 0))
     return(days)
@@ -396,13 +419,13 @@ if(!fresh.data) {
   
   #put data for prediction into separate df and save for later
   filter30 <- function(start.date) {
-    day30 <- current.run + days(30)
+    day30 <- lubridate::ymd(current.run) + days(30)
     flag <- start.date <= day30
     return(flag)
   }
   
   filter60 <- function(start.date) {
-    day30 <- current.run + days(31)
+    day30 <- lubridate::ymd(current.run) + days(31)
     day60 <- day30 + days(30)
     flag <- start.date %within% interval(day30, day60)
     return(flag)
@@ -462,7 +485,7 @@ if(!fresh.data) {
   
   data[candidate.vars] <- lapply(data[candidate.vars], replacer)
   
-  save(data, candidate.vars, filter60, file = paste0('data in progress ', current.run, '.saved'))
+  save(data, candidate.vars, filter60, file = paste0('data in progress ', lubridate::ymd(current.run), '.saved'))
 }
 
 # 3A - JOB ROLE FEATURES ------------------------------------------------
@@ -472,7 +495,7 @@ jr.ft <- tbl_df(data) %>%
   group_by(JOB_ROL_TYP_DESC, OG.Start.floor) %>%
   summarise(jr.count = length(OPNSET_POS_ID))
 
-month.vec <- seq.Date(ymd('2000-01-01'), floor_date(current.run, 'month'), 'month')
+month.vec <- seq.Date(ymd('2000-01-01'), floor_date(lubridate::ymd(current.run), 'month'), 'month')
 
 month.expanded <- with(jr.ft, CJ(unique(as.factor(JOB_ROL_TYP_DESC)), month.vec))
 setnames(month.expanded, colnames(month.expanded), c('JOB_ROL_TYP_DESC', 'OG.Start.floor'))
@@ -494,7 +517,7 @@ jrss.week <- tbl_df(data) %>%
             sub.actual = sum(STAT_RESN_DESC)) %>%
   mutate(JRSS = paste(JOB_ROL_TYP_DESC, SKLST_TYP_DESC, sep = ' - '))
 
-week.vec <- with(jrss.week, seq.Date(min(Close.week), floor_date(current.run, 'week'), 'week'))
+week.vec <- with(jrss.week, seq.Date(min(Close.week), floor_date(lubridate::ymd(current.run), 'week'), 'week'))
 
 week.expanded <- with(jrss.week, CJ(unique(c(JRSS)), week.vec))
 setnames(week.expanded, colnames(week.expanded), c('JRSS', 'Close.week'))
@@ -662,7 +685,7 @@ jrss.tbl <- tbl_df(jrss.tbl) %>%
 #create top 50 JRSS feature
 top.jrss <- tbl_df(jrss.expanded) %>%
   #filter(ref.month == max(ref.month)) %>%
-  filter(ref.month == floor_date(current.run, 'month')) %>%
+  filter(ref.month == floor_date(lubridate::ymd(current.run), 'month')) %>%
   select(JOB_ROL_TYP_DESC, SKLST_TYP_DESC, tot.12cs, sub.12cs) %>%
   #group_by(JOB_ROL_TYP_DESC, SKLST_TYP_DESC) %>%
   mutate(tot.rank = row_number(desc(tot.12cs)),
@@ -699,8 +722,8 @@ save(df, file = '60 day df pre filter.saved')
 #need to split df by test/train to map in the last available JRSS values to prediction set
 df <- tbl_df(df) %>%
   #exclude dates beyond the time period we're projecting
-  filter(STRT_DT <= (current.run + days(60)), 
-         !STRT_DT %within% interval(current.run, current.run + days(30)),
+  filter(STRT_DT <= (lubridate::ymd(current.run) + days(60)), 
+         !STRT_DT %within% interval(lubridate::ymd(current.run), lubridate::ymd(current.run) + days(30)),
          (WTHDRW_CLOS_T >= OG.Start.floor - months(1) | is.na(WTHDRW_CLOS_T)),
          CRE_T <= OG.Start.floor - months(1)) %>%
   #start date may be up to 30 days in advance, but take any positions that are still open
@@ -724,6 +747,7 @@ upcoming.expanded <- left_join(upcoming.expanded, up.map, by = 'JRSS') %>%
   select(-JRSS)
 
 upcoming.expanded <- left_join(upcoming.expanded, upcoming.tbl, by = c('JOB_ROL_TYP_DESC', 'SKLST_TYP_DESC', "OG.Start.floor"))
+
 upcoming.expanded <- upcoming.expanded %>%
   mutate(upcoming.open = replace(upcoming.open, is.na(upcoming.open), 0)) %>%
   group_by(JOB_ROL_TYP_DESC, SKLST_TYP_DESC) %>%
@@ -750,46 +774,45 @@ train <- left_join(train, month.expanded, by = c('JOB_ROL_TYP_DESC', 'OG.Start.f
 
 #shift these new training positions to a temp df
 train.new <- train
+load('60 day last run.saved')
 #load the training set USED IN PREVIOUS RUNS (this is the running training df)
-load(paste0('60 day train', last.run, '.saved'))
-
+#load(paste0('60 day train', last.run, '.saved'))
+load(paste0('60 day train', toString(last.run), '.saved'))
 train <- train %>%
   select(-jrss.tot, -jrss.sub, -demand.tier, -top.city, -top.owner, -Month, - Year)
 
 #stack the new positions with features into master training set
 #gotta make sure the master training set is LOCKED before we start running (ie, need same features in old & current)
 train <- rbind(train, train.new)
-
 #select last FULL week (don't include the current week)
 latest.week <- week.expanded %>%
-  filter(Close.week == floor_date(current.run, 'week') - weeks(1))
+  filter(Close.week == floor_date(lubridate::ymd(current.run), 'week') - weeks(1))
+
 testing <- testing %>%
-  mutate(dummy.week = floor_date(current.run, 'week') - weeks(1))
+  mutate(dummy.week = floor_date(lubridate::ymd(current.run), 'week') - weeks(1))
 testing <- left_join(testing, latest.week, by = c('JOB_ROL_TYP_DESC', 'SKLST_TYP_DESC', 'dummy.week' = 'Close.week'))
 testing <- select(testing, -dummy.week)
-
 #select last MONTH from JRSS.TBL
 latest.month <- jrss.tbl %>%
-  filter(ref.month == floor_date(current.run, 'month'))
+  filter(ref.month == floor_date(lubridate::ymd(current.run), 'month'))
 testing <- testing %>%
-  mutate(dummy.month = floor_date(current.run, 'month'))
+  mutate(dummy.month = floor_date(lubridate::ymd(current.run), 'month'))
 testing <- left_join(testing, latest.month, by = c('JOB_ROL_TYP_DESC', 'SKLST_TYP_DESC', 'dummy.month' = 'ref.month'))
 testing <- select(testing, -dummy.month)
 
 #select last MONTH from MONTH.EXPANDED
 latest.jr <- month.expanded %>%
-  filter(OG.Start.floor == floor_date(current.run, 'month'))
+  filter(OG.Start.floor == floor_date(lubridate::ymd(current.run), 'month'))
 testing <- testing %>%
-  mutate(dummy.month = floor_date(current.run, 'month'))
+  mutate(dummy.month = floor_date(lubridate::ymd(current.run), 'month'))
 testing <- left_join(testing, latest.jr, by = c('JOB_ROL_TYP_DESC', 'dummy.month' = 'OG.Start.floor'))
 testing <- select(testing, -dummy.month)
-
 
 #restack for data type processing (we'll split them later)
 df <- rbind(train, testing)
 
 #create work city var
-past.12 <- interval(floor_date(current.run, 'month') - months(12), floor_date(current.run, 'month'))
+past.12 <- interval(floor_date(lubridate::ymd(current.run), 'month') - months(12), floor_date(lubridate::ymd(current.run), 'month'))
 city <- tbl_df(df) %>%
   filter(OG.Start.floor %within% past.12) %>%
   group_by(WRK_CTY_NM) %>%
@@ -825,9 +848,12 @@ df <- merge(df, owner, by = 'OPPOR_OWNR_NOTES_ID', all.x = T)
 #replace NAs with 'OTHER'
 df[c('jrss.tot', 'jrss.sub', 'top.city', 'top.owner')] <- lapply(df[c('jrss.tot', 'jrss.sub', 'top.city', 'top.owner')], 
                                                                  function(x) replace(x, is.na(x), 'OTHER'))
+
 load('start time.saved')
+
 start - proc.time()
-save(df, file = paste0('60-day observation tbl ', current.run, '.saved'))
+
+save(df, file = paste0('60-day observation tbl ', lubridate::ymd(current.run), '.saved'))
 
 # 4A - PREP DATA FOR RANDOM FORESTS ------------------------------------------------------
 df$Month <- with(df, month(STRT_DT, label = T))
@@ -865,8 +891,8 @@ df[setdiff(num.inputvars, 'STAT_RESN_DESC')] <- lapply(df[setdiff(num.inputvars,
 testing <- df[df$type == 'TEST',]
 train <- df[df$type == 'TRAIN',]
 
-save(testing, file = paste0('60 day testing', current.run, '.saved'))
-save(train, file = paste0('60 day train', current.run, '.saved'))
+save(testing, file = paste0('60 day testing', lubridate::ymd(current.run), '.saved'))
+save(train, file = paste0('60 day train', lubridate::ymd(current.run), '.saved'))
 #save last run date for using next refresh
 last.run <- current.run
 save(last.run, file = 'last run.saved')
@@ -941,7 +967,7 @@ print(num.forest)
 varImpPlot(num.forest)
 
 library(cowsay)
-sink(paste0('60 day randomForest diagnostics ', current.run, '.txt'))
+sink(paste0('60 day randomForest diagnostics ', lubridate::ymd(current.run), '.txt'))
 cat(say('Clark is a butt!', by='chicken', type = 'string'), sep = '\n')
 print(fact.forest)
 print(num.forest)
@@ -991,7 +1017,7 @@ test.id <- data.frame(Position.ID = testing$OPNSET_POS_ID,
                       actual = testing$STAT_RESN_DESC)
 #map eval outcomes
 final.pred <- cbind(test.id, num.predictions)
-save(final.pred, file = paste0('60 day prediction output ', current.run, '.saved'))
+save(final.pred, file = paste0('60 day prediction output ', lubridate::ymd(current.run), '.saved'))
 
 #make pretty importance chart at the very end to avoid weird shutdown
 
@@ -1107,7 +1133,7 @@ if(regress) {
       log.round = log(roundsum + 1),
       rt.act = sqrt(actual),
       rt.round = sqrt(roundsum)) %>%
-  mutate(JRSS = paste0(JR, ' - ', SS))
+    mutate(JRSS = paste0(JR, ' - ', SS))
   train.eval$random <-
     with(train.eval, round(sum(actual) / sum(N) * N, 0))
   train.eval$rt.rand <- with(train.eval, sqrt(random))
@@ -1115,7 +1141,7 @@ if(regress) {
   #THIS GETS YOU THE ACTUAL DEMAND FOR A GIVEN MONTH
   demanded <- tbl_df(data) %>%
     filter(year(OG.Start.floor) >= 2015) %>%
-           #WTHDRW_CLOS_T >= OG.Start.floor) %>%
+    #WTHDRW_CLOS_T >= OG.Start.floor) %>%
     group_by(JOB_ROL_TYP_DESC, SKLST_TYP_DESC, OG.Start.floor) %>%
     summarise(Total.N = length(OPNSET_POS_ID),
               subks = sum(STAT_RESN_DESC, na.rm = T)) %>%
@@ -1138,7 +1164,7 @@ if(regress) {
   summary(rand.eval)
   
   #DUMP
-  sink(paste0('60 day regression diagnostics ', current.run, '.txt'))
+  sink(paste0('60 day regression diagnostics ', lubridate::ymd(current.run), '.txt'))
   cat(say('THE HORROR, THE HORROR!', by = 'cat', type = 'string'), sep = '\n')
   cat("\n")
   cat("\n")
@@ -1247,9 +1273,9 @@ setwd("~/Demand Forecasting II/Templates")
 
 rep.arch <- 'C:/Users/SCIP2/Documents/Demand Forecasting II/Archive'
 
-reports <- c(paste0('60 day - IBM Output Report ', current.run, '.xlsx'),
-             paste0('60 day - Vendor-US Output Report ', current.run, '.xlsx'),
-             paste0('60 day - Vendor-CA Output Report ', current.run, '.xlsx'))
+reports <- c(paste0('60 day - IBM Output Report ', lubridate::ymd(current.run), '.xlsx'),
+             paste0('60 day - Vendor-US Output Report ', lubridate::ymd(current.run), '.xlsx'),
+             paste0('60 day - Vendor-CA Output Report ', lubridate::ymd(current.run), '.xlsx'))
 
 for(i in 1:length(reports)) {
   sink(paste0(i+3, '.txt'))
@@ -1271,7 +1297,7 @@ hideSheet(wb, sheet = "Data")
 
 #output IBM report
 setwd("~/Demand Forecasting II/Archive")
-saveWorkbook(wb, file = paste0('60 day - IBM Output Report ', current.run, '.xlsx'))
+saveWorkbook(wb, file = paste0('60 day - IBM Output Report ', lubridate::ymd(current.run), '.xlsx'))
 setwd("~/Demand Forecasting II/Output Reports")
 saveWorkbook(wb, file = '60 day - IBM Output Report.xlsx')
 
@@ -1289,7 +1315,7 @@ writeWorksheet(wb,
 hideSheet(wb, sheet = "Data")
 
 setwd("~/Demand Forecasting II/Archive")
-saveWorkbook(wb, file = paste0('60 day - Vendor-US Output Report ', current.run, '.xlsx'))
+saveWorkbook(wb, file = paste0('60 day - Vendor-US Output Report ', lubridate::ymd(current.run), '.xlsx'))
 setwd("~/Demand Forecasting II/Output Reports")
 saveWorkbook(wb, file = '60 day - Vendor-US Output Report.xlsx')
 
@@ -1305,7 +1331,7 @@ writeWorksheet(wb,
 hideSheet(wb, sheet = "Data")
 
 setwd("~/Demand Forecasting II/Archive")
-saveWorkbook(wb, file = paste0('60 day - Vendor-CA Output Report ', current.run, '.xlsx'))
+saveWorkbook(wb, file = paste0('60 day - Vendor-CA Output Report ', lubridate::ymd(current.run), '.xlsx'))
 setwd("~/Demand Forecasting II/Output Reports")
 saveWorkbook(wb, file = '60 day - Vendor-CA Output Report.xlsx')
 
@@ -1341,7 +1367,7 @@ importance.plot <- ggplot(importance.tbl, aes(x = var, y = MeanDecreaseAccuracy,
         plot.title=element_text(face="bold",size=24))
 
 ggsave(plot= importance.plot,
-       paste0("60 day Random Forest feature importance", current.run, '.png'),
+       paste0("60 day Random Forest feature importance", lubridate::ymd(current.run), '.png'),
        h=250,
        w=200,
        unit="mm",
